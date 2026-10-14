@@ -1,0 +1,108 @@
+# OpenCode v2 sandbox for a remote Linux server. See README.md.
+#
+# Required exports (server shell): GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL,
+# HOST_HOME, HOST_WORKSPACE. Optional: OPENCODE_PORT (default 4096),
+# OPENCODE_SERVER_PASSWORD, provider keys, DATABASE_URL, HOST_UID/HOST_GID.
+#
+# The container idles after seeding; start the server from tmux:
+#   docker compose exec opencode-sandbox tmux new-session -A -s dev
+#   opencode serve --hostname 0.0.0.0 --port "$OPENCODE_PORT"
+services:
+  opencode-sandbox:
+    build:
+      context: .sandbox
+      dockerfile: Dockerfile
+      args:
+        USER_UID: ${HOST_UID:-1000}
+        USER_GID: ${HOST_GID:-1000}
+    # Explicit tag instead of compose's auto `<project>-<service>` name.
+    # Multi-instance is fine: same Dockerfile, same content, tag reused.
+    image: opencode-sandbox:latest
+    init: true
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    environment:
+      GITHUB_PAT: ${GITHUB_PAT:?GITHUB_PAT must be exported}
+      GIT_USER_NAME: ${GIT_USER_NAME:?GIT_USER_NAME must be exported}
+      GIT_USER_EMAIL: ${GIT_USER_EMAIL:?GIT_USER_EMAIL must be exported}
+      GIT_ASKPASS: /usr/local/bin/git-askpass
+      GIT_TERMINAL_PROMPT: "0"
+      OPENCODE_PORT: ${OPENCODE_PORT:-4096}
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:dev@postgres:5432/app}
+      # Fixed (not passed through from the host): the image has no TERM, and
+      # client TERM is not forwarded through `docker compose exec`. Host
+      # terminals like ghostty/kitty have no terminfo entry here, and tmux
+      # aborts with "missing or unsuitable terminal". xterm-256color is in
+      # the base image's terminfo database and is always sufficient.
+      TERM: xterm-256color
+    ports:
+      - "${OPENCODE_PORT:-4096}:${OPENCODE_PORT:-4096}"
+    volumes:
+      # Project source: the directory containing this compose file (drop-in
+      # per-project usage). Override with HOST_WORKSPACE when these files live
+      # in a central checkout instead.
+      - "${HOST_WORKSPACE:-.}:/workspace"
+      - opencode-data:/home/dev/.local
+      - opencode-config:/home/dev/.config/opencode
+      - agent-skills:/home/dev/.agents/skills
+      # Seed sources, read-only. The entrypoint copies each into its writable
+      # volume on first start; afterwards the in-container copies are
+      # independent: container edits never touch the host, host edits don't
+      # flow in (delete the marker to re-seed).
+      -
+          type: bind
+          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.agents/skills"
+          target: /seed/skills
+          read_only: true
+          bind:
+              create_host_path: false
+      -
+          type: bind
+          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/opencode.json"
+          target: /seed/opencode.json
+          read_only: true
+          bind:
+              create_host_path: false
+      -
+          type: bind
+          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/agents"
+          target: /seed/agents
+          read_only: true
+          bind:
+              create_host_path: false
+      -
+          type: bind
+          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/commands"
+          target: /seed/commands
+          read_only: true
+          bind:
+              create_host_path: false
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: app
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  opencode-data:
+  opencode-config:
+  agent-skills:
+  postgres-data:

@@ -1,0 +1,11 @@
+# Keep the .sandbox build context lean.
+.git
+node_modules
+**/node_modules
+.venv
+**/.venv
+__pycache__
+**/__pycache__
+dist
+build
+*.log
