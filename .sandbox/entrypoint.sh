@@ -24,4 +24,15 @@ fi
 git config --global user.name "$GIT_USER_NAME"
 git config --global user.email "$GIT_USER_EMAIL"
 
+# Ensure managed Python 3.14 is available. `uv python install --default`
+# installs `python3.14`, `python3`, and `python` into ~/.local/bin (already
+# on PATH in the image); the interpreter lives in ~/.local/share/uv (the
+# opencode-data volume), so it persists across restarts. Tolerate failure
+# (offline first start) so the container still idles instead of crashing.
+if ! uv python find 3.14 >/dev/null 2>&1; then
+    echo "Installing Python 3.14 via uv..." >&2
+    uv python install 3.14 --default \
+        || echo "Warning: Python 3.14 install failed (no network?). Continuing without it." >&2
+fi
+
 exec "$@"
