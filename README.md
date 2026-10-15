@@ -1,221 +1,82 @@
 # opencode-sandbox
 
-OpenCode v2 sandbox for a remote Linux server: an isolated Docker environment
-where the agent works on a project that lives on the server host, with a full
-dev toolchain, passwordless sudo, and a persistent tmux shell. Replaces
+Isolated Docker sandbox for running OpenCode v2 on a remote Linux server.
+The agent works in `/workspace` (a bind mount of the project on the host)
+as non-root `dev` with passwordless sudo, inside tmux/zsh. Replaces
 `dev-container`, `sandbox-opencode`, and `sandbox-opencode-v2-server`.
-Connect from your laptop with the existing `sandbox-opencode-v2-client`.
 
 ## What's included
 
-- OpenCode v2, installed with the official installer at image-build time; the server is started manually when needed.
-- Node.js 22 on Debian Bookworm slim, pnpm, `uv`/`uvx` (Python), Git.
-- No compiler toolchain baked in (saves ~400 MB); the agent installs `build-essential` via sudo when a native build needs it (e.g. node-gyp without a prebuilt binary). The install doesn't survive a container recreate.
-- Zsh (oh-my-zsh, Agnoster prompt, `.sandbox/.zshrc`), tmux (`.sandbox/.tmux.conf`, default-shell zsh).
-- Non-root `dev` user with **passwordless sudo**, so the agent can install dependencies and start/stop services inside the sandbox.
-- Persistent named volumes for OpenCode state and (seeded) config; the project itself is a bind mount.
-- GitHub HTTPS authentication via a host-provided PAT and an askpass helper.
-- Optional PostgreSQL behind a Compose profile.
-
-Playwright and browser dependencies are intentionally not included; install them per project.
+- OpenCode v2 (installed at build time, started manually), Node 22, pnpm, `uv`/`uvx`, Python 3.14 (via `uv` on first start), Git, tmux, zsh (oh-my-zsh/Agnoster).
+- No compiler toolchain baked in; the agent `apt-get install`s `build-essential` via sudo when needed (lost on recreate).
+- `dev` user with passwordless sudo (container only); GitHub HTTPS auth via `GITHUB_PAT` + askpass helper.
+- Named volumes for OpenCode state, seeded config, and skills; optional PostgreSQL profile.
 
 ## Requirements
 
-- Docker and the Docker Compose plugin on the server.
-- Required exports in the shell that runs Compose (see below).
-
-## Server environment
-
-Export in `~/.zshrc` (or the shell startup file of the shell running Compose):
+Docker + Compose plugin on the server, and these exports in the shell that runs Compose:
 
 ```zsh
-export GITHUB_PAT="your-fine-grained-github-token"
-export GIT_USER_NAME="Your Name"
-export GIT_USER_EMAIL="your-github-noreply-address"
-export HOST_HOME="/home/your-user"        # home of the server user (not $HOME; Snap Docker can differ)
-
-# Optional
-export HOST_WORKSPACE="$HOST_HOME/code/my-project"  # override the bind source (default: the dir holding compose.yml)
-export OPENCODE_PORT="4096"               # default 4096
-export OPENCODE_SERVER_PASSWORD="..."     # if unset, the served port is unsecured
-export OPENAI_API_KEY="..."               # optional provider keys
-export OPENROUTER_API_KEY="..."
-export OPENCODE_API_KEY="..."
-export TYPESAFE_API_KEY="..."
-export DATABASE_URL="postgresql://app:dev@postgres:5432/app"
+export GITHUB_PAT="..." GIT_USER_NAME="..." GIT_USER_EMAIL="..."
+export HOST_HOME="/home/your-user"   # server user's home (seed sources live here)
+# Optional: HOST_WORKSPACE (default: dir holding the compose file), OPENCODE_PORT (default 4096),
+# OPENCODE_SERVER_PASSWORD, OPENAI_API_KEY, OPENROUTER_API_KEY, OPENCODE_API_KEY, TYPESAFE_API_KEY, DATABASE_URL
 ```
 
-Compose reads exported variables from its launching process; it does not read `~/.zshrc` itself. Required values fail fast when missing.
+Missing required values fail fast. Keep secrets in the shell environment, never in the repo.
 
-## Per-project layout (recommended)
+## Quick start
 
-Drop the sandbox into the project directory on the server: only `compose.yml` touches the project root; everything else lives in `.sandbox/`:
+Recommended layout — drop into the project root (only the compose file lives there):
 
 ```
 project/
-├── compose.yml
+├── compose-oc-devbox.yml
 └── .sandbox/
-    ├── Dockerfile
-    ├── .dockerignore
-    ├── entrypoint.sh
-    ├── .zshrc
-    └── .tmux.conf
 ```
-
-No `HOST_WORKSPACE` is needed — the project is bound from `.` — and the Compose project name derives from the directory name, so simultaneous projects only need distinct ports.
-
-Adding another service later is straightforward: each service declares its own build context and Dockerfile, so containers built from different images coexist in one compose file:
-
-```yaml
-  another-service:
-    build:
-      context: ./other-dir   # that dir contains its own Dockerfile
-      dockerfile: Dockerfile
-```
-
-Put the non-secret, host-specific values in a per-project `.env` next to `compose.yml` (Compose reads it automatically):
-
-```dotenv
-# .env — adjust per server user and project
-HOST_UID=1000          # run: id -u
-HOST_GID=1000          # run: id -g
-HOST_HOME=/home/your-user
-OPENCODE_PORT=4096     # unique per simultaneous project
-GIT_USER_NAME=Your Name
-GIT_USER_EMAIL=your-github-noreply-address
-```
-
-Keep secrets (`GITHUB_PAT`, provider API keys, `OPENCODE_SERVER_PASSWORD`) out of the repo: either export them in the server shell or put them in a gitignored `.env`. Committing the sandbox files themselves is fine — they contain no secrets; a gitignored `.env` keeps teammate checkouts clean.
-
-Workflow:
 
 ```sh
-cd ~/code/my-project          # contains the sandbox files
-docker compose build          # HOST_UID/HOST_GID come from .env
-docker compose up -d
-docker compose exec opencode-sandbox tmux new-session -A -s dev
+cd ~/code/my-project
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f compose-oc-devbox.yml up --build -d
+docker compose -f compose-oc-devbox.yml exec opencode-sandbox tmux new-session -A -s dev
 # inside tmux, when the web UI is needed:
 opencode serve --hostname 0.0.0.0 --port "$OPENCODE_PORT"
 ```
 
-## Quick start (central layout)
+Central checkout instead: set `HOST_WORKSPACE` to the project dir; the command is the same.
+Open `http://<server-ip>:4096` once `serve` runs. If `OPENCODE_SERVER_PASSWORD` is set, Basic auth (`opencode` / password) is required.
 
-```sh
-# 1. Put the project on the server at $HOST_WORKSPACE (clone it there or copy it).
+Per-project overrides go in a gitignored `.env` next to the compose file (`HOST_UID`, `HOST_GID`, `HOST_HOME`, `OPENCODE_PORT`, git identity). Use a distinct port per simultaneous project.
 
-# 2. Build (UID/GID args map the in-container dev user to the server user)
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose build
+## Laptop client
 
-# 3. Start the sandbox (it idles; nothing listens yet)
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
-
-# 4. Persistent development shell
-docker compose exec opencode-sandbox tmux new-session -A -s dev
-```
-
-Inside tmux, when the web UI is needed:
-
-```sh
-opencode serve --hostname 0.0.0.0 --port "$OPENCODE_PORT"
-```
-
-Open `http://localhost:4096` on the server host, or `http://<host-lan-ip>:4096` from another device. Nothing answers until `serve` is running. If `OPENCODE_SERVER_PASSWORD` is set, HTTP Basic auth is required (username `opencode`); if unset, anyone who can reach the port has full access.
-
-## Connect from your laptop (client)
-
-Start `serve` inside tmux first (see above), then connect from your laptop with the client image:
+Start `serve` in tmux first, then from the laptop:
 
 ```sh
 docker run -it --rm \
   -v "$HOME/.config/opencode-v2/cli.json:/root/.config/opencode/cli.json:ro" \
-  -e OPENCODE_SERVER_PASSWORD='XXXXXX' \
-  ghcr.io/anomalyco/opencode:2.0.29 --server "http://XX.XX.XX.XX:XX"
+  -e OPENCODE_SERVER_PASSWORD='...' \
+  ghcr.io/anomalyco/opencode:2.0.29 --server "http://<server-ip>:<port>"
 ```
 
-Replace `XXXXXX` with the same `OPENCODE_SERVER_PASSWORD` the server was started with, and `http://XX.XX.XX.XX:XX` with `http://<server-ip>:<OPENCODE_PORT>` (e.g. `http://192.168.1.10:4096`).
+## Notes
 
-## Git and the workspace
-
-`/workspace` is a bind mount of the project on the server host — the bind source is the directory holding `compose.yml` (drop-in mode) or `HOST_WORKSPACE` (central layout). The repo survives `docker compose down -v`. Git runs inside the container with HTTPS remotes; the askpass helper supplies `x-access-token`/`$GITHUB_PAT` and stores no credential file. `GIT_USER_NAME`/`GIT_USER_EMAIL` are commit identity, set at startup.
-
-Use a fine-grained PAT scoped to the needed repository. The PAT is visible to processes inside the container, including the agent.
-
-## Config seeding
-
-On first start the entrypoint copies host files into writable volumes and marks each seeded:
-
-- `~/.config/opencode-v2/opencode.json`, `agents/`, `commands/` → `opencode-config` volume
-- `~/.agents/skills` → `agent-skills` volume
-
-Afterwards the in-container copies are **independent**: changes inside the container never flow back to the host, and host changes don't flow in either. Re-seed from the host after changing host files:
-
-```sh
-docker compose exec opencode-sandbox sh -c \
-  'rm -f ~/.config/opencode/.host-config-seeded ~/.agents/skills/.host-skills-seeded'
-docker compose restart opencode-sandbox
-```
-
-## Optional PostgreSQL
-
-Not started by default:
-
-```sh
-docker compose --profile postgres up -d
-```
-
-Reachable as `postgres:5432` on the Compose network (not published to the host); default `postgresql://app:dev@postgres:5432/app`, overridable via `DATABASE_URL`.
-
-## Multiple environments
-
-Project names isolate containers, networks, and volumes; choose a distinct port per instance (no fixed container name):
-
-```sh
-HOST_HOME=... HOST_WORKSPACE=... OPENCODE_PORT=4096 docker compose -p project-a up -d --build
-HOST_HOME=... HOST_WORKSPACE=... OPENCODE_PORT=4097 docker compose -p project-b up -d --build
-```
-
-## Sudo gotcha
-
-The container's `dev` user has passwordless sudo **inside the container only** — it is not root on the host. If the agent uses sudo for an edit in `/workspace`, the file is created as container-root; on the bind mount it will then be owned by host-root. Fix afterwards with:
-
-```sh
-sudo chown -R $(id -u):$(id -g) /workspace
-```
-
-## Volumes and cleanup
-
-| Mount                  | Contents                                  |
-| ---------------------- | ----------------------------------------- |
-| bind source (`.` or `$HOST_WORKSPACE`) | Project source (on the host — never deleted by Compose) |
-| `opencode-data`        | OpenCode state under `/home/dev/.local`   |
-| `opencode-config`      | Seeded OpenCode config                    |
-| `postgres-data`        | PostgreSQL data (profile)                 |
-
-```sh
-docker compose down        # keeps volumes
-docker compose down -v     # also deletes state/config/database (not the workspace)
-```
-
-## Security notes
-
-- Passwordless sudo is scoped to the container; no Docker socket, SSH directory, or full host home is mounted.
-- Host config/skills mounts are read-only; the agent can read them, so keep secrets out of them.
-- API keys and `GITHUB_PAT` are passed through the environment and readable inside the container.
-- This is a useful filesystem boundary, not a complete security sandbox.
-
-## Updating OpenCode
-
-The installer tracks `latest` at build time; rebuild without cache:
-
-```sh
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose build --no-cache opencode-sandbox
-docker compose up -d --force-recreate opencode-sandbox
-```
+- **Workspace:** `/workspace` is a bind mount; it survives `down -v`. Use a fine-grained PAT — it is visible inside the container.
+- **Config seeding:** first start copies `~/.config/opencode-v2/{opencode.json,agents/,commands/}` and `~/.agents/skills` from the host into volumes; afterwards both sides are independent. Re-seed with:
+  ```sh
+  docker compose -f compose-oc-devbox.yml exec opencode-sandbox sh -c \
+    'rm -f ~/.config/opencode/.host-config-seeded ~/.agents/skills/.host-skills-seeded'
+  docker compose -f compose-oc-devbox.yml restart opencode-sandbox
+  ```
+- **PostgreSQL:** `docker compose -f compose-oc-devbox.yml --profile postgres up -d`; reachable as `postgres:5432` (default `postgresql://app:dev@postgres:5432/app`).
+- **Sudo files:** files the agent creates with sudo in `/workspace` end up owned by host-root; fix on the host with `sudo chown -R $(id -u):$(id -g) .`.
+- **Volumes:** `opencode-data` (`~/.local`), `opencode-config` (`~/.config/opencode`), `agent-skills` (`~/.agents/skills`), `postgres-data`. `down` keeps them, `down -v` deletes them (never the workspace).
+- **Security:** passwordless sudo, API keys, and `GITHUB_PAT` are visible inside the container; seed mounts are read-only; no Docker socket is mounted. Filesystem boundary, not a full sandbox.
+- **Update OpenCode:** `docker compose -f compose-oc-devbox.yml build --no-cache opencode-sandbox && docker compose -f compose-oc-devbox.yml up -d --force-recreate opencode-sandbox`
 
 ## Files
 
-- `compose.yml` — bind-mounted workspace, volumes, ports, optional PostgreSQL; the only file that lives in the project root. Builds the image as `opencode-sandbox:latest`.
-- `.sandbox/Dockerfile` — multi-stage image (opencode fetch, uv, final), UID-parameterized user with sudo.
-- `.sandbox/entrypoint.sh` — seeds host config, sets git identity, then runs the idle command.
-- `.sandbox/.zshrc`, `.sandbox/.tmux.conf` — shell/tmux setup, baked in.
-- `SPEC.md` — design decisions behind this build.
+- `compose-oc-devbox.yml` — workspace bind, volumes, ports, PostgreSQL profile.
+- `.sandbox/Dockerfile` — image (OpenCode fetch, uv, `dev` user, dotfiles).
+- `.sandbox/entrypoint.sh` — seeds config/skills, sets git identity, installs Python 3.14, idles.
+- `.sandbox/.zshrc`, `.sandbox/.tmux.conf`, `.sandbox/.dockerignore`
