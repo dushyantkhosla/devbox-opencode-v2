@@ -1,8 +1,9 @@
 # OpenCode v2 sandbox for a remote Linux server. See README.md.
 #
 # Required exports (server shell): GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL,
-# HOST_HOME, HOST_WORKSPACE. Optional: OPENCODE_PORT (default 4096),
-# OPENCODE_SERVER_PASSWORD, provider keys, DATABASE_URL, HOST_UID/HOST_GID.
+# HOST_HOME. Optional: HOST_WORKSPACE (default: dir holding the compose file),
+# OPENCODE_PORT (default 4096), OPENCODE_SERVER_PASSWORD, provider keys,
+# HOST_UID/HOST_GID.
 #
 # The container idles after seeding; start the server from tmux:
 #   docker compose exec opencode-sandbox tmux new-session -A -s dev
@@ -20,9 +21,17 @@ services:
     image: opencode-sandbox:latest
     init: true
     restart: unless-stopped
+    # Chromium crashes on Docker's default 64M /dev/shm (tab crashes under
+    # heavy pages/screenshots). Playwright also passes --disable-dev-shm-usage,
+    # but 1gb here removes the whole class of failure.
+    shm_size: "1gb"
     stdin_open: true
     tty: true
     working_dir: /workspace
+    # Shared project network (see compose.yml): postgres is reachable as
+    # `postgres` (or `db`), mailpit as `mailpit`, from inside this container.
+    networks:
+      - sandbox-net
     environment:
       GITHUB_PAT: ${GITHUB_PAT:?GITHUB_PAT must be exported}
       GIT_USER_NAME: ${GIT_USER_NAME:?GIT_USER_NAME must be exported}
@@ -35,7 +44,6 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://app:dev@postgres:5432/app}
       # Fixed (not passed through from the host): the image has no TERM, and
       # client TERM is not forwarded through `docker compose exec`. Host
       # terminals like ghostty/kitty have no terminfo entry here, and tmux
@@ -57,52 +65,42 @@ services:
       # independent: container edits never touch the host, host edits don't
       # flow in (delete the marker to re-seed).
       -
-          type: bind
-          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.agents/skills"
-          target: /seed/skills
-          read_only: true
-          bind:
-              create_host_path: false
+        type: bind
+        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.agents/skills"
+        target: /seed/skills
+        read_only: true
+        bind:
+          create_host_path: false
       -
-          type: bind
-          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/opencode.json"
-          target: /seed/opencode.json
-          read_only: true
-          bind:
-              create_host_path: false
+        type: bind
+        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/opencode.json"
+        target: /seed/opencode.json
+        read_only: true
+        bind:
+          create_host_path: false
       -
-          type: bind
-          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/agents"
-          target: /seed/agents
-          read_only: true
-          bind:
-              create_host_path: false
+        type: bind
+        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/agents"
+        target: /seed/agents
+        read_only: true
+        bind:
+          create_host_path: false
       -
-          type: bind
-          source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/commands"
-          target: /seed/commands
-          read_only: true
-          bind:
-              create_host_path: false
-
-  postgres:
-    profiles: ["postgres"]
-    image: postgres:18-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: dev
-      POSTGRES_DB: app
-    volumes:
-      - postgres-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+        type: bind
+        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/commands"
+        target: /seed/commands
+        read_only: true
+        bind:
+          create_host_path: false
 
 volumes:
   opencode-data:
   opencode-config:
   agent-skills:
-  postgres-data:
+
+networks:
+  # Shared with compose.yml (postgres + mailpit). Explicit name so both
+  # files attach to the same network regardless of compose project name;
+  # declared (not external) in both, so startup order doesn't matter.
+  sandbox-net:
+    name: sandbox-net

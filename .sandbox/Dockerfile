@@ -2,7 +2,7 @@
 # Sandbox image for OpenCode v2 on a remote server: full dev toolchain
 # (Node 22, pnpm, uv), non-root `dev` user with passwordless sudo, tmux/zsh.
 # Built from source; rebuild to update OpenCode (installer tracks latest).
-ARG NODE_VERSION=22
+ARG NODE_VERSION=22.23.3
 
 # --- Stage 1: fetch the opencode binary.
 # curl/tar live only here, never in the final image. Same base as final,
@@ -14,7 +14,7 @@ RUN apt-get update \
     && curl -fsSL https://opencode.ai/v2/install | bash
 
 # --- Stage 2: uv binary (official image; nothing else is taken from it) ---
-FROM ghcr.io/astral-sh/uv:latest AS uv
+FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
 # --- Stage 3: final sandbox image ---
 FROM node:${NODE_VERSION}-bookworm-slim
@@ -61,9 +61,57 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       unzip \
       zsh \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g pnpm@latest \
+    && npm install -g pnpm@12.11.2 \
     && npm cache clean --force \
     && chmod +x /usr/local/bin/opencode
+
+# PostgreSQL 18 client (psql, pg_isready, pg_dump/pg_restore) matching the PG18
+# dev server (compose.yml). Debian bookworm only ships v15, so the official
+# PGDG repo provides the matching major; the API itself talks to Postgres via
+# psycopg, but the client tools are needed for grant SQL, topology/readiness
+# checks, and backups. Pinned exactly for reproducibility — bump when the
+# server major/patch moves (a mismatched pg_dump cannot dump a newer server).
+RUN install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+         -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && printf '%s\n' "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+         > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-18=18.6-1.pgdg12+2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Playwright (browser automation for journey verification) + its matching
+# Chromium, baked in so rebuilds don't re-download anything.
+# - @playwright/cli@0.1.22 pins playwright@1.64.0-alpha-1790635538000, and its
+#   bundled playwright-core dictates the browser build (chromium-1247 /
+#   chromium_headless_shell-1247, Chrome for Testing 155.0.8059.12). The
+#   global `playwright` MUST be that exact version: a newer one (e.g. 1.64.1)
+#   ships a different browser revision and `playwright-cli open` then fails
+#   with "Browser ... is not installed". Bump both together.
+# - PLAYWRIGHT_BROWSERS_PATH is system-wide because only parts of the dev
+#   home are persisted volumes; per-user ~/.cache would be lost on rebuild.
+# - PWTEST_SOCKETS_DIR defeats the "socket directory path is too long"
+#   failure in agent terminals with very long TMPDIRs. It is created here as
+#   root, so it must be handed to the dev user or `playwright-cli` gets EACCES.
+# Size cost: ~0.5-1 GB (browser + `install-deps` system libraries).
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+    PWTEST_SOCKETS_DIR=/tmp/pw
+RUN npm install -g @playwright/cli@0.1.22 playwright@1.64.0-alpha-1790635538000 \
+    && mkdir -p /opt/ms-playwright /tmp/pw \
+    && playwright install --with-deps chromium \
+    && npm cache clean --force \
+    && chmod -R a+rX /opt/ms-playwright \
+    && chown "${USER_UID}:${USER_GID}" /tmp/pw
+
+# System Python for uv: CPython 3.14.8 in a system path (the dev home is partly
+# volume-backed, so uv's default per-user location would not reach fresh
+# volumes). UV_PYTHON_INSTALL_DIR persists to runtime, so `uv run` finds it
+# without downloading. Per the uv docs, the installation is used as-is via
+# `uv run` / `uv python` — never symlinked or added to PATH.
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+RUN uv python install 3.14.8 --default \
+    && chmod -R a+rX /opt/python \
+    && uv python find 3.14.8
 
 # Git askpass helper for GitHub HTTPS: supplies x-access-token / GITHUB_PAT
 # so interactive prompts are never needed and no credential file is written.
