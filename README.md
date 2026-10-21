@@ -1,6 +1,6 @@
-# opencode-sandbox
+# opencode-devbox
 
-Isolated Docker sandbox for running OpenCode v2 on a remote Linux server.
+Isolated Docker devbox for running OpenCode v2 on a remote Linux server.
 The agent works in `/workspace` (a bind mount of the project on the host)
 as non-root `dev` with passwordless sudo, inside tmux/zsh. Replaces
 `dev-container`, `sandbox-opencode`, and `sandbox-opencode-v2-server`.
@@ -11,7 +11,7 @@ as non-root `dev` with passwordless sudo, inside tmux/zsh. Replaces
 - Playwright CLI + pinned Chromium (`PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`, 1gb `/dev/shm`) and the PostgreSQL 18 client (`psql`, `pg_isready`, `pg_dump`/`pg_restore`) matching the host PG18 server.
 - No compiler toolchain baked in; the agent `apt-get install`s `build-essential` via sudo when needed (lost on recreate).
 - `dev` user with passwordless sudo (container only); GitHub HTTPS auth via `GITHUB_PAT` + askpass helper.
-- Named volumes for OpenCode state, seeded config, and skills; joins the shared `sandbox-net` network (postgres/mailpit from the host `compose.yml`). No database of its own.
+- Named volumes for OpenCode state, seeded config, and skills; joins the shared `devbox-net` network (postgres/mailpit from the host `compose.yml`). No database of its own.
 
 ## Requirements
 
@@ -28,18 +28,18 @@ Missing required values fail fast. Keep secrets in the shell environment, never 
 
 ## Quick start
 
-Recommended layout — copy the compose file and `.sandbox/` into the project root:
+Recommended layout — copy the compose file and `.devbox/` into the project root:
 
 ```
 project/
-├── sandbox.compose.yml
-└── .sandbox/
+├── devbox.compose.yml
+└── .devbox/
 ```
 
 ```sh
 cd ~/code/my-project
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f sandbox.compose.yml up --build -d
-docker compose -f sandbox.compose.yml exec opencode-sandbox tmux new-session -A -s dev
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f devbox.compose.yml up --build -d
+docker compose -f devbox.compose.yml exec opencode-devbox tmux new-session -A -s dev
 # inside tmux, when the web UI is needed:
 opencode serve --hostname 0.0.0.0 --port "$OPENCODE_PORT"
 ```
@@ -65,20 +65,20 @@ docker run -it --rm \
 - **Workspace:** `/workspace` is a bind mount; it survives `down -v`. Use a fine-grained PAT — it is visible inside the container.
 - **Config seeding:** first start copies `~/.config/opencode-v2/{opencode.json,agents/,commands/}` and `~/.agents/skills` from the host into volumes; afterwards both sides are independent. Re-seed with:
   ```sh
-  docker compose -f sandbox.compose.yml exec opencode-sandbox sh -c \
+  docker compose -f devbox.compose.yml exec opencode-devbox sh -c \
     'rm -f ~/.config/opencode/.host-config-seeded ~/.agents/skills/.host-skills-seeded'
-  docker compose -f sandbox.compose.yml restart opencode-sandbox
+  docker compose -f devbox.compose.yml restart opencode-devbox
   ```
-- **Database/mail:** this file runs no postgres of its own; it joins the shared `sandbox-net` network, so `postgres` (or `db`) and `mailpit` from the host `compose.yml` are reachable from inside the container.
+- **Database/mail:** this file runs no postgres of its own; it joins the shared `devbox-net` network, so `postgres` (or `db`) and `mailpit` from the host `compose.yml` are reachable from inside the container.
 - **Sudo files:** files the agent creates with sudo in `/workspace` end up owned by host-root; fix on the host with `sudo chown -R $(id -u):$(id -g) .`.
 - **Volumes:** `opencode-data` (`~/.local`), `opencode-config` (`~/.config/opencode`), `agent-skills` (`~/.agents/skills`). `down` keeps them, `down -v` deletes them (never the workspace).
-- **Security:** passwordless sudo, API keys, and `GITHUB_PAT` are visible inside the container; seed mounts are read-only; no Docker socket is mounted. Filesystem boundary, not a full sandbox.
-- **Update OpenCode:** `docker compose -f sandbox.compose.yml build --no-cache opencode-sandbox && docker compose -f sandbox.compose.yml up -d --force-recreate opencode-sandbox`
+- **Security:** passwordless sudo, API keys, and `GITHUB_PAT` are visible inside the container; seed mounts are read-only; no Docker socket is mounted. Filesystem boundary, not a full devbox.
+- **Update OpenCode:** `docker compose -f devbox.compose.yml build --no-cache opencode-devbox && docker compose -f devbox.compose.yml up -d --force-recreate opencode-devbox`
 
 ## Files
 
-- `sandbox.compose.yml` — workspace bind, seed mounts, volumes, ports, shared `sandbox-net` network.
-- `.sandbox/Dockerfile` — image (OpenCode fetch, Node/pnpm, uv + CPython 3.14.8, Playwright/Chromium, PG18 client, `dev` user, dotfiles).
-- `.sandbox/entrypoint.sh` — seeds config/skills on first start, sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
-- `.sandbox/AGENTS.md` — image manifest (baked toolchain, version pins, rebuild).
-- `.sandbox/.zshrc`, `.sandbox/.tmux.conf`, `.sandbox/.dockerignore`
+- `devbox.compose.yml` — workspace bind, seed mounts, volumes, ports, shared `devbox-net` network.
+- `.devbox/Dockerfile` — image (OpenCode fetch, Node/pnpm, uv + CPython 3.14.8, Playwright/Chromium, PG18 client, `dev` user, dotfiles).
+- `.devbox/entrypoint.sh` — seeds config/skills on first start, sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
+- `.devbox/AGENTS.md` — image manifest (baked toolchain, version pins, rebuild).
+- `.devbox/.zshrc`, `.devbox/.tmux.conf`, `.devbox/.dockerignore`

@@ -1,6 +1,6 @@
-# .sandbox — dev container image manifest
+# .devbox — dev container image manifest
 
-This directory builds the sandbox image (`sandbox.compose.yml`). What is
+This directory builds the devbox image (`devbox.compose.yml`). What is
 baked in below is available in **every** session; do not `apt-get install`
 anything on this list, and never install *services* (postgres, mailpit,
 servers) — those run on the host via `compose.yml` (see root `AGENTS.md`
@@ -56,8 +56,8 @@ browser revision are a matched set). Still floating, on purpose:
 ## Rebuild (host shell)
 
 ```bash
-docker compose -f sandbox.compose.yml build
-docker compose -f sandbox.compose.yml up -d --force-recreate
+docker compose -f devbox.compose.yml build
+docker compose -f devbox.compose.yml up -d --force-recreate
 ```
 
 After editing `Dockerfile`, also update the list above.

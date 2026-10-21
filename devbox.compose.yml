@@ -1,4 +1,4 @@
-# OpenCode v2 sandbox for a remote Linux server. See README.md.
+# OpenCode v2 devbox for a remote Linux server. See README.md.
 #
 # Required exports (server shell): GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL,
 # HOST_HOME. Optional: HOST_WORKSPACE (default: dir holding the compose file),
@@ -6,19 +6,19 @@
 # HOST_UID/HOST_GID.
 #
 # The container idles after seeding; start the server from tmux:
-#   docker compose exec opencode-sandbox tmux new-session -A -s dev
+#   docker compose exec opencode-devbox tmux new-session -A -s dev
 #   opencode serve --hostname 0.0.0.0 --port "$OPENCODE_PORT"
 services:
-  opencode-sandbox:
+  opencode-devbox:
     build:
-      context: .sandbox
+      context: .devbox
       dockerfile: Dockerfile
       args:
         USER_UID: ${HOST_UID:-1000}
         USER_GID: ${HOST_GID:-1000}
     # Explicit tag instead of compose's auto `<project>-<service>` name.
     # Multi-instance is fine: same Dockerfile, same content, tag reused.
-    image: opencode-sandbox:latest
+    image: opencode-devbox:latest
     init: true
     restart: unless-stopped
     # Chromium crashes on Docker's default 64M /dev/shm (tab crashes under
@@ -31,7 +31,7 @@ services:
     # Shared project network (see compose.yml): postgres is reachable as
     # `postgres` (or `db`), mailpit as `mailpit`, from inside this container.
     networks:
-      - sandbox-net
+      - devbox-net
     environment:
       GITHUB_PAT: ${GITHUB_PAT:?GITHUB_PAT must be exported}
       GIT_USER_NAME: ${GIT_USER_NAME:?GIT_USER_NAME must be exported}
@@ -102,5 +102,5 @@ networks:
   # Shared with compose.yml (postgres + mailpit). Explicit name so both
   # files attach to the same network regardless of compose project name;
   # declared (not external) in both, so startup order doesn't matter.
-  sandbox-net:
-    name: sandbox-net
+  devbox-net:
+    name: devbox-net

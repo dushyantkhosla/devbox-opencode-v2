@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Sandbox image for OpenCode v2 on a remote server: full dev toolchain
+# Devbox image for OpenCode v2 on a remote server: full dev toolchain
 # (Node 22, pnpm, uv), non-root `dev` user with passwordless sudo, tmux/zsh.
 # Built from source; rebuild to update OpenCode (installer tracks latest).
 ARG NODE_VERSION=22.23.3
@@ -16,7 +16,7 @@ RUN apt-get update \
 # --- Stage 2: uv binary (official image; nothing else is taken from it) ---
 FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
-# --- Stage 3: final sandbox image ---
+# --- Stage 3: final devbox image ---
 FROM node:${NODE_VERSION}-bookworm-slim
 
 ARG USERNAME=dev
@@ -130,7 +130,7 @@ RUN printf '%s\n' \
 # and xterm-256color/tmux-256color are in the base image's terminfo database.
 
 # The single non-root user, with passwordless sudo so the agent can install
-# dependencies and start/stop services inside the sandbox. The node base image
+# dependencies and start/stop services inside the devbox. The node base image
 # already owns UID/GID 1000 (`node`), so that account is renamed/reused
 # instead of colliding with it.
 RUN set -eux; \
@@ -161,8 +161,8 @@ RUN set -eux; \
 # --chmod is BuildKit-only, so mode is set explicitly here (legacy builder).
 COPY --chown=${USER_UID}:${USER_GID} .zshrc "/home/${USERNAME}/.zshrc"
 COPY --chown=${USER_UID}:${USER_GID} .tmux.conf "/home/${USERNAME}/.tmux.conf"
-COPY --chown=${USER_UID}:${USER_GID} entrypoint.sh /usr/local/bin/sandbox-entrypoint
-RUN chmod 0755 /usr/local/bin/sandbox-entrypoint
+COPY --chown=${USER_UID}:${USER_GID} entrypoint.sh /usr/local/bin/devbox-entrypoint
+RUN chmod 0755 /usr/local/bin/devbox-entrypoint
 
 USER ${USERNAME}
 WORKDIR /workspace
@@ -174,5 +174,5 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
 EXPOSE 4096
 
 # Seeds host config, sets git identity, then runs CMD (idle by default).
-ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/devbox-entrypoint"]
 CMD ["sleep", "infinity"]

@@ -1,4 +1,4 @@
-# Keep the .sandbox build context lean.
+# Keep the .devbox build context lean.
 .git
 node_modules
 **/node_modules
