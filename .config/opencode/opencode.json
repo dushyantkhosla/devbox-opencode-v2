@@ -1,0 +1,89 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "enabled_providers": [
+        "opencode-go",
+        "openai",
+        "opencode"
+    ],
+    "disabled_providers": [
+        "github-copilot",
+        "ollama",
+        "openrouter",
+        "ollama-cloud",
+        "mimo",
+        "kilo"
+    ],
+    "providers": {
+        "openrouter": {
+            "models": {
+                "deepseek/deepseek-v4.1-flash": {
+                    "name": "Deepseek V4.1 Flash (FP8)",
+                    "settings": {
+                        "provider": {
+                            "quantizations": [
+                                "fp8"
+                            ],
+                            "sort": "price"
+                        }
+                    }
+                },
+                "z-ai/glm-5.3-flash": {
+                    "name": "GLM 5.3 Flash (FP8)",
+                    "settings": {
+                        "provider": {
+                            "quantizations": [
+                                "fp8"
+                            ],
+                            "sort": "price"
+                        }
+                    }
+                },
+                "qwen/qwen3.8-flash": {
+                    "name": "Qwen 3.8 Flash (FP8)",
+                    "settings": {
+                        "provider": {
+                            "quantizations": [
+                                "fp8"
+                            ],
+                            "sort": "price"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "agents": {
+        "plan": {
+            "model": "openai/gpt-6.1-sol#xhigh",
+            "mode": "primary",
+            "color": "#22c55e"
+        },
+        "build": {
+            "model": "opencode-go/deepseek-v4.1-flash#high",
+            "mode": "primary",
+            "color": "#ef4444"
+        },
+        "free": {
+            "model": "opencode/mimo-v2.6-flash-free",
+            "mode": "primary",
+            "color": "#3b82f6"
+        },
+        "explore": {
+            "model": "opencode-go/muse-spark-1.3-contributor#medium",
+            "mode": "subagent",
+            "steps": 100,
+            "permissions": [
+                { "action": "read", "resource": "*", "effect": "allow" },
+                { "action": "glob", "resource": "*", "effect": "allow" },
+                { "action": "grep", "resource": "*", "effect": "allow" },
+                { "action": "shell", "resource": "*", "effect": "allow" },
+                { "action": "execute", "resource": "*", "effect": "allow" }
+            ]
+        },
+        "general": {
+            "model": "opencode-go/muse-spark-1.3-contributor#medium",
+            "mode": "subagent",
+            "steps": 100
+        }
+    }
+}

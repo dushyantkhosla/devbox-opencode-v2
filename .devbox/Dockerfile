@@ -94,11 +94,17 @@ RUN install -d /usr/share/postgresql-common/pgdg \
 #   failure in agent terminals with very long TMPDIRs. It is created here as
 #   root, so it must be handed to the dev user or `playwright-cli` gets EACCES.
 # Size cost: ~0.5-1 GB (browser + `install-deps` system libraries).
+# webkit sits alongside chromium for the phone journeys: it is the WebKit build
+# (26.6) that approximates Safari's engine, so an iPhone viewport is checked on a
+# real WebKit engine instead of on Chromium. Device emulation (`--device "iPhone 15"`)
+# sets viewport, DPR, touch and user agent; it is not iOS, so platform behaviour
+# (home-screen install, standalone mode, the iOS PDF viewer) still needs a real device.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
     PWTEST_SOCKETS_DIR=/tmp/pw
 RUN npm install -g @playwright/cli@0.1.22 playwright@1.64.0-alpha-1790635538000 \
     && mkdir -p /opt/ms-playwright /tmp/pw \
     && playwright install --with-deps chromium \
+    && playwright install --with-deps webkit \
     && npm cache clean --force \
     && chmod -R a+rX /opt/ms-playwright \
     && chown "${USER_UID}:${USER_GID}" /tmp/pw
@@ -168,11 +174,12 @@ USER ${USERNAME}
 WORKDIR /workspace
 
 # oh-my-zsh, once, for the only user (needs git + curl from the layer above).
-RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended \
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc \
     && zsh -i -c 'node --version && pnpm --version && uv --version && opencode --version && tmux -V && git --version'
 
 EXPOSE 4096
 
-# Seeds host config, sets git identity, then runs CMD (idle by default).
+# Seeds /seed (repo .config/opencode, see devbox.compose.yml), sets git
+# identity, then runs CMD (idle by default).
 ENTRYPOINT ["/usr/local/bin/devbox-entrypoint"]
 CMD ["sleep", "infinity"]

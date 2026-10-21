@@ -8,7 +8,7 @@ as non-root `dev` with passwordless sudo, inside tmux/zsh. Replaces
 ## What's included
 
 - OpenCode v2 (fetched at build time, started manually), Node 22.23.3, pnpm 12.11.2, `uv`/`uvx` 0.13.1, CPython 3.14.8 (baked into `/opt/python`), Git, tmux, zsh (oh-my-zsh/Agnoster).
-- Playwright CLI + pinned Chromium (`PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`, 1gb `/dev/shm`) and the PostgreSQL 18 client (`psql`, `pg_isready`, `pg_dump`/`pg_restore`) matching the host PG18 server.
+- Playwright CLI + pinned Chromium and WebKit (`PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`, 1gb `/dev/shm`) and the PostgreSQL 18 client (`psql`, `pg_isready`, `pg_dump`/`pg_restore`) matching the host PG18 server.
 - No compiler toolchain baked in; the agent `apt-get install`s `build-essential` via sudo when needed (lost on recreate).
 - `dev` user with passwordless sudo (container only); GitHub HTTPS auth via `GITHUB_PAT` + askpass helper.
 - Named volumes for OpenCode state, seeded config, and skills; joins the shared `devbox-net` network (postgres/mailpit from the host `compose.yml`). No database of its own.
@@ -19,7 +19,6 @@ Docker + Compose plugin on the server, and these exports in the shell that runs 
 
 ```zsh
 export GITHUB_PAT="..." GIT_USER_NAME="..." GIT_USER_EMAIL="..."
-export HOST_HOME="/home/your-user"   # server user's home (seed sources live here)
 # Optional: HOST_WORKSPACE (default: dir holding the compose file), HOST_UID/HOST_GID (default 1000),
 # OPENCODE_PORT (default 4096), OPENCODE_SERVER_PASSWORD, OPENAI_API_KEY, OPENROUTER_API_KEY, OPENCODE_API_KEY, TYPESAFE_API_KEY
 ```
@@ -28,12 +27,13 @@ Missing required values fail fast. Keep secrets in the shell environment, never 
 
 ## Quick start
 
-Recommended layout — copy the compose file and `.devbox/` into the project root:
+Recommended layout — copy the compose file, `.devbox/`, and `.config/` into the project root:
 
 ```
 project/
 ├── devbox.compose.yml
-└── .devbox/
+├── .devbox/
+└── .config/opencode/    # seed config: opencode.json, agents/, commands/, plugins/, skills/
 ```
 
 ```sh
@@ -47,7 +47,7 @@ opencode serve --hostname 0.0.0.0 --port "$OPENCODE_PORT"
 Central checkout instead: set `HOST_WORKSPACE` to the project dir; the command is the same.
 Open `http://<server-ip>:4096` once `serve` runs. If `OPENCODE_SERVER_PASSWORD` is set, Basic auth (`opencode` / password) is required.
 
-Per-project overrides go in a gitignored `.env` next to the compose file (`HOST_UID`, `HOST_GID`, `HOST_HOME`, `OPENCODE_PORT`, git identity). Use a distinct port per simultaneous project.
+Per-project overrides go in a gitignored `.env` next to the compose file (`HOST_UID`, `HOST_GID`, `OPENCODE_PORT`, git identity). Use a distinct port per simultaneous project.
 
 ## Laptop client
 
@@ -63,7 +63,7 @@ docker run -it --rm \
 ## Notes
 
 - **Workspace:** `/workspace` is a bind mount; it survives `down -v`. Use a fine-grained PAT — it is visible inside the container.
-- **Config seeding:** first start copies `~/.config/opencode-v2/{opencode.json,agents/,commands/}` and `~/.agents/skills` from the host into volumes; afterwards both sides are independent. Re-seed with:
+- **Config seeding:** first start copies `.config/opencode/` from this checkout (`opencode.json`, `agents/`, `commands/`, `plugins/`, plus `skills/` into `~/.agents/skills`) into volumes; afterwards both sides are independent. Re-seed with:
   ```sh
   docker compose -f devbox.compose.yml exec opencode-devbox sh -c \
     'rm -f ~/.config/opencode/.host-config-seeded ~/.agents/skills/.host-skills-seeded'
@@ -77,8 +77,9 @@ docker run -it --rm \
 
 ## Files
 
-- `devbox.compose.yml` — workspace bind, seed mounts, volumes, ports, shared `devbox-net` network.
-- `.devbox/Dockerfile` — image (OpenCode fetch, Node/pnpm, uv + CPython 3.14.8, Playwright/Chromium, PG18 client, `dev` user, dotfiles).
-- `.devbox/entrypoint.sh` — seeds config/skills on first start, sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
+- `devbox.compose.yml` — workspace bind, seed mount (`./.config/opencode` → `/seed`), volumes, ports, shared `devbox-net` network.
+- `.devbox/Dockerfile` — image (OpenCode fetch, Node/pnpm, uv + CPython 3.14.8, Playwright/Chromium + WebKit, PG18 client, `dev` user, dotfiles).
+- `.devbox/entrypoint.sh` — seeds `/seed` into config/skills volumes on first start, sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
+- `.config/opencode/` — seed content: `opencode.json`, `agents/`, `commands/`, `plugins/`, `skills/`.
 - `.devbox/AGENTS.md` — image manifest (baked toolchain, version pins, rebuild).
 - `.devbox/.zshrc`, `.devbox/.tmux.conf`, `.devbox/.dockerignore`

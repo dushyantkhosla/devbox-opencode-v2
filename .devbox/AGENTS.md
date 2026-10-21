@@ -19,7 +19,10 @@ servers) — those run on the host via `compose.yml` (see root `AGENTS.md`
   (global) — the exact version the CLI pins, because a newer `playwright` ships
   a different browser revision and `playwright-cli` then refuses to launch.
   Browsers: `chromium-1247` / `chromium_headless_shell-1247` (Chrome for
-  Testing 155.0.8059.12). Invoke as `playwright-cli open --browser=chromium
+  Testing 155.0.8059.12), plus `webkit-2368` (WebKit ~26.6 — used for
+  Safari-engine/iPhone viewport journey checks via `--device "iPhone 15"`;
+  it is not real iOS, device-only behaviour still needs a phone). Invoke as
+  `playwright-cli open --browser=chromium
   <url>` — bare `open` fails (no branded Chrome here).
   `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` and `PWTEST_SOCKETS_DIR=/tmp/pw`
   are set image-wide; leave them alone — but `/tmp/pw` must stay writable by

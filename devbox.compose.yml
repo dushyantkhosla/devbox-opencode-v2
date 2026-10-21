@@ -1,7 +1,7 @@
 # OpenCode v2 devbox for a remote Linux server. See README.md.
 #
-# Required exports (server shell): GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL,
-# HOST_HOME. Optional: HOST_WORKSPACE (default: dir holding the compose file),
+# Required exports (server shell): GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL.
+# Optional: HOST_WORKSPACE (default: dir holding the compose file),
 # OPENCODE_PORT (default 4096), OPENCODE_SERVER_PASSWORD, provider keys,
 # HOST_UID/HOST_GID.
 #
@@ -60,35 +60,17 @@ services:
       - opencode-data:/home/dev/.local
       - opencode-config:/home/dev/.config/opencode
       - agent-skills:/home/dev/.agents/skills
-      # Seed sources, read-only. The entrypoint copies each into its writable
-      # volume on first start; afterwards the in-container copies are
-      # independent: container edits never touch the host, host edits don't
-      # flow in (delete the marker to re-seed).
+      # Seed source, read-only, from this checkout (versions with the repo
+      # instead of a per-host ~/.config/opencode-v2 / ~/.agents/skills).
+      # The entrypoint copies it into writable volumes on first start;
+      # afterwards the in-container copies are independent: container edits
+      # never touch the host, host edits don't flow in (delete the marker
+      # to re-seed). Relative source resolves against this compose file's
+      # directory, so this works from any shell/cwd.
       -
         type: bind
-        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.agents/skills"
-        target: /seed/skills
-        read_only: true
-        bind:
-          create_host_path: false
-      -
-        type: bind
-        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/opencode.json"
-        target: /seed/opencode.json
-        read_only: true
-        bind:
-          create_host_path: false
-      -
-        type: bind
-        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/agents"
-        target: /seed/agents
-        read_only: true
-        bind:
-          create_host_path: false
-      -
-        type: bind
-        source: "${HOST_HOME:?Set HOST_HOME to the server user's home directory}/.config/opencode-v2/commands"
-        target: /seed/commands
+        source: ./.config/opencode
+        target: /seed
         read_only: true
         bind:
           create_host_path: false
