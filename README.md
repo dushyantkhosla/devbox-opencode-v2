@@ -64,12 +64,13 @@ docker run -it --rm \
 ## Notes
 
 - **Workspace:** `/workspace` is a bind mount; it survives `down -v`. Use a fine-grained PAT — it is visible inside the container.
-- **Config seeding:** first start copies `.devbox/.config/opencode/` from this checkout (`opencode.json`, `agents/`, `commands/`, `plugins/`, plus `skills/` into `~/.agents/skills`) into volumes; afterwards both sides are independent. Re-seed with:
+- **Config seeding:** the entrypoint copies `.devbox/.config/opencode/` from this checkout (`opencode.json`, `agents/`, `commands/`, `plugins/`, plus `skills/` into `~/.agents/skills`) into the volumes and records a content fingerprint of the seed. On every start the fingerprint is compared: unchanged seed leaves in-container edits alone, changed seed re-seeds (removing what the previous seed copied, keeping entries the container added itself). Volumes seeded by an older devbox generation (host `~/.agents/skills` / `~/.config/opencode-v2` bind mounts) are detected and replaced on first start. Force a re-seed of the skills volume with:
   ```sh
   docker compose -f devbox.compose.yml exec opencode-devbox sh -c \
-    'rm -f ~/.config/opencode/.host-config-seeded ~/.agents/skills/.host-skills-seeded'
+    'rm -rf ~/.agents/skills/* ~/.agents/skills/.host-skills-seeded'
   docker compose -f devbox.compose.yml restart opencode-devbox
   ```
+  This drops container-side skill edits too; for the config volume, delete `opencode-config` instead (`down -v` also resets state).
 - **Database/mail:** this file runs no postgres of its own; it joins the shared `devbox-net` network, so `postgres` (or `db`) and `mailpit` from the host `compose.yml` are reachable from inside the container.
 - **Sudo files:** files the agent creates with sudo in `/workspace` end up owned by host-root; fix on the host with `sudo chown -R $(id -u):$(id -g) .`.
 - **Volumes:** `opencode-data` (`~/.local`), `opencode-config` (`~/.config/opencode`), `agent-skills` (`~/.agents/skills`). `down` keeps them, `down -v` deletes them (never the workspace).
@@ -80,7 +81,7 @@ docker run -it --rm \
 
 - `devbox.compose.yml` — workspace bind, seed mount (`./.devbox/.config/opencode` → `/seed`), volumes, ports, shared `devbox-net` network.
 - `.devbox/Dockerfile` — image (OpenCode fetch, Node/pnpm, uv + CPython 3.14.8, Playwright/Chromium + WebKit, PG18 client, `dev` user, dotfiles).
-- `.devbox/entrypoint.sh` — seeds `/seed` into config/skills volumes on first start, sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
+- `.devbox/entrypoint.sh` — seeds `/seed` into the config/skills volumes (fingerprint-guarded, so the checkout stays authoritative), sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
 - `.devbox/.config/opencode/` — seed content: `opencode.json`, `agents/`, `commands/`, `plugins/`, `skills/`.
 - `.devbox/AGENTS.md` — image manifest (baked toolchain, version pins, rebuild).
 - `.devbox/.zshrc`, `.devbox/.tmux.conf`, `.devbox/.dockerignore`
