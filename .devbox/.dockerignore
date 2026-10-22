@@ -1,5 +1,9 @@
 # Keep the .devbox build context lean.
 .git
+# Seed content (.devbox/.config/opencode): never COPYed into the image —
+# it reaches the container as the read-only /seed bind mount, which
+# .dockerignore does not affect.
+.config
 node_modules
 **/node_modules
 .venv

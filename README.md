@@ -27,13 +27,14 @@ Missing required values fail fast. Keep secrets in the shell environment, never 
 
 ## Quick start
 
-Recommended layout — copy the compose file, `.devbox/`, and `.config/` into the project root:
+Recommended layout — copy the compose file and `.devbox/` into the project root:
 
 ```
 project/
 ├── devbox.compose.yml
-├── .devbox/
-└── .config/opencode/    # seed config: opencode.json, agents/, commands/, plugins/, skills/
+└── .devbox/
+    ├── Dockerfile
+    └── .config/opencode/    # seed config: opencode.json, agents/, commands/, plugins/, skills/
 ```
 
 ```sh
@@ -63,7 +64,7 @@ docker run -it --rm \
 ## Notes
 
 - **Workspace:** `/workspace` is a bind mount; it survives `down -v`. Use a fine-grained PAT — it is visible inside the container.
-- **Config seeding:** first start copies `.config/opencode/` from this checkout (`opencode.json`, `agents/`, `commands/`, `plugins/`, plus `skills/` into `~/.agents/skills`) into volumes; afterwards both sides are independent. Re-seed with:
+- **Config seeding:** first start copies `.devbox/.config/opencode/` from this checkout (`opencode.json`, `agents/`, `commands/`, `plugins/`, plus `skills/` into `~/.agents/skills`) into volumes; afterwards both sides are independent. Re-seed with:
   ```sh
   docker compose -f devbox.compose.yml exec opencode-devbox sh -c \
     'rm -f ~/.config/opencode/.host-config-seeded ~/.agents/skills/.host-skills-seeded'
@@ -77,9 +78,9 @@ docker run -it --rm \
 
 ## Files
 
-- `devbox.compose.yml` — workspace bind, seed mount (`./.config/opencode` → `/seed`), volumes, ports, shared `devbox-net` network.
+- `devbox.compose.yml` — workspace bind, seed mount (`./.devbox/.config/opencode` → `/seed`), volumes, ports, shared `devbox-net` network.
 - `.devbox/Dockerfile` — image (OpenCode fetch, Node/pnpm, uv + CPython 3.14.8, Playwright/Chromium + WebKit, PG18 client, `dev` user, dotfiles).
 - `.devbox/entrypoint.sh` — seeds `/seed` into config/skills volumes on first start, sets git identity, then execs CMD (idle `sleep infinity`); the server is started manually.
-- `.config/opencode/` — seed content: `opencode.json`, `agents/`, `commands/`, `plugins/`, `skills/`.
+- `.devbox/.config/opencode/` — seed content: `opencode.json`, `agents/`, `commands/`, `plugins/`, `skills/`.
 - `.devbox/AGENTS.md` — image manifest (baked toolchain, version pins, rebuild).
 - `.devbox/.zshrc`, `.devbox/.tmux.conf`, `.devbox/.dockerignore`

@@ -69,7 +69,7 @@ services:
       # directory, so this works from any shell/cwd.
       -
         type: bind
-        source: ./.config/opencode
+        source: ./.devbox/.config/opencode
         target: /seed
         read_only: true
         bind:

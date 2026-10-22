@@ -179,7 +179,7 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
 
 EXPOSE 4096
 
-# Seeds /seed (repo .config/opencode, see devbox.compose.yml), sets git
+# Seeds /seed (repo .devbox/.config/opencode, see devbox.compose.yml), sets git
 # identity, then runs CMD (idle by default).
 ENTRYPOINT ["/usr/local/bin/devbox-entrypoint"]
 CMD ["sleep", "infinity"]
