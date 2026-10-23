@@ -2,7 +2,7 @@
 description: Get an independent second opinion
 ---
 
-Spawn a **sdd-solution-reviewer** subagent and pass
+Spawn a **solution reviewer** subagent and pass
 
 1. A contextualised description of this issue
 2. Your proposed solution
